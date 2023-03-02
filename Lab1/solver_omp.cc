@@ -55,10 +55,14 @@ struct SolverImpl {
       s[row * 9 + col] = (char)('0' + __builtin_ffs(candidate));
       if (todo_index < num_todo) {
 	if(num_solutions==0){
-        #pragma omp task shared(num_solutions)
+	if(todo_index<2){
+        #pragma omp task shared(num_solutions) 
         {
             Solve(todo_index + 1, s,nrows,ncols,nboxes);
         }
+	}else{
+		Solve(todo_index + 1, s,nrows,ncols,nboxes);
+	}
 	}else{break;}
       } else {
 	if(num_solutions==0){
