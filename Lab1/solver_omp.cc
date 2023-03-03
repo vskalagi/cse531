@@ -128,7 +128,7 @@ extern "C" size_t Solver(const char *input, char *solution) {
     }
     //memcpy(solution, solver.final_solution, 81);
     //PrintSudoku(solver.final_solution, std::cerr);
-    solver.Solve(0, solution,solver.rows,solver.cols,solver.boxes);
+    //solver.Solve(0, solution,solver.rows,solver.cols,solver.boxes);
     memcpy(solution, solver.final_solution, 81);
     //PrintSudoku(solution);
     return solver.num_solutions;
