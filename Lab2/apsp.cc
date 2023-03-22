@@ -29,17 +29,11 @@ int main(int argc, char **argv) {
     MPI_Comm_size(comm, &p);
     ///////////////////////////////////////
     int *d = NULL;
-    printf("haha2\n ");
     if (my_rank == 0){
-	printf("haha211\n ");
         FILE *infile = fopen(argv[1], "r");
-	printf("haha212\n ");
         fscanf(infile, "%d %d", &n, &m);
-	printf("haha213\n ");
         d = (int *) malloc(sizeof(int *) * n * n);
-	printf("haha21\n ");
         for (int i = 0; i < n * n; ++i) d[i] = INFINITY;
-	printf("haha22\n ");
         int a, b, w;
         for (int i = 0; i < m; ++i) {
             fscanf(infile, "%d %d %d", &a, &b, &w);
@@ -47,31 +41,35 @@ int main(int argc, char **argv) {
         }
         fclose(infile);
     }
-    printf("haha3\n ");
     MPI_Bcast(&n, 1, MPI_INT, 0, comm);
     ////////////////////////////////////////
     //n = Read_n(my_rank, comm);
     loc_n = n / p;
+    int rem=n%p;
+    if (my_rank<rem){
+        loc_n = loc_n+1;
+    }
     loc_mat = (int *)malloc(n * loc_n * sizeof(int));
-    loc_dist = (int *)malloc(loc_n * sizeof(int));
-    loc_pred = (int *)malloc(loc_n * sizeof(int));
+    loc_dist = (int *)malloc(n * loc_n * sizeof(int));
+    loc_pred = (int *)malloc(n * loc_n * sizeof(int));
     blk_col_mpi_t = Build_blk_col_type(n, loc_n);
 
-    printf("haha4\n ");
     if (my_rank == 0) {
-        global_dist = (int *)malloc(n * sizeof(int));
-        global_pred = (int *)malloc(n * sizeof(int));
+        global_dist = (int *)malloc(n * n * sizeof(int));
+        global_pred = (int *)malloc(n * n * sizeof(int));
     }
     ////////////////////////////////////////////////////////
     MPI_Scatter(d, 1, blk_col_mpi_t, loc_mat, n * loc_n, MPI_INT, 0, comm);
 
     if (my_rank == 0) free(d);
     ////////////////////////////////////////////////////////
-    Dijkstra(loc_mat, loc_dist, loc_pred, loc_n, n, comm);
+    Dijkstra(loc_mat, loc_dist, loc_pred, loc_n, n, comm,rem);
 
     /* Gather the results from Dijkstra */
-    MPI_Gather(loc_dist, loc_n, MPI_INT, global_dist, loc_n, MPI_INT, 0, comm);
-    MPI_Gather(loc_pred, loc_n, MPI_INT, global_pred, loc_n, MPI_INT, 0, comm);
+    for(int i=0;i<n;i++){
+    	MPI_Gather(loc_dist[i * loc_n], loc_n, MPI_INT, global_dist[i * n], loc_n, MPI_INT, 0, comm);
+    	MPI_Gather(loc_pred[i * loc_n], loc_n, MPI_INT, global_pred[i * n], loc_n, MPI_INT, 0, comm);
+    }
 
     /* Print results */
     if (my_rank == 0) {
@@ -206,20 +204,28 @@ void Read_matrix(int loc_mat[], int n, int loc_n,
  *
  */
 void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
-                   int my_rank, int loc_n) {
-    int loc_v;
+                   int my_rank, int loc_n, int n, int rem) {
+    int offset;
+    if(my_rank<rem){
+        offset=my_rank * loc_n;
+    }else{
+        offset=(rem * (loc_n+1))+((my_rank-rem)*(loc_n));
+    }
 
-    if (my_rank == 0)
-        loc_known[0] = 1;
-    else
-        loc_known[0] = 0;
+    for(int i=0;i<n;i++){
+    	int loc_v;
 
-    for (loc_v = 1; loc_v < loc_n; loc_v++)
-        loc_known[loc_v] = 0;
+    	for (loc_v = 0; loc_v < loc_n; loc_v++)
+            loc_known[loc_v] = 0;
+	if(i<(offset+loc_n) && i>=offset){
+            loc_known[i*n + i-offset]=1;
+        }
 
-    for (loc_v = 0; loc_v < loc_n; loc_v++) {
-        loc_dist[loc_v] = loc_mat[0 * loc_n + loc_v];
-        loc_pred[loc_v] = 0;
+
+        for (loc_v = 0; loc_v < loc_n; loc_v++) {
+            loc_dist[i * loc_n + loc_v] = loc_mat[i * loc_n + loc_v];
+            loc_pred[i * loc_n + loc_v] = 0;
+        }
     }
 }
 
@@ -244,17 +250,17 @@ void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[
  *
  */
 void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
-              MPI_Comm comm) {
+              MPI_Comm comm,int rem) {
 
     int i, loc_v, loc_u, glbl_u, new_dist, my_rank, dist_glbl_u;
     int *loc_known;
-    int my_min[2];
-    int glbl_min[2];
+    int *my_min = (int *)malloc(n* 2 * sizeof(int));//int my_min[2];
+    int *glbl_min = (int *)malloc(n* 2 * sizeof(int));//int glbl_min[2];
 
     MPI_Comm_rank(comm, &my_rank);
-    loc_known = (int *)malloc(loc_n * sizeof(int));
+    loc_known = (int *)malloc(n * loc_n * sizeof(int));
 
-    Dijkstra_Init(loc_mat, loc_pred, loc_dist, loc_known, my_rank, loc_n);
+    Dijkstra_Init(loc_mat, loc_pred, loc_dist, loc_known, my_rank, loc_n, n, rem);
 
     /* Run loop n - 1 times since we already know the shortest path to global
        vertex 0 from global vertex 0 */
