@@ -34,6 +34,7 @@ int main(int argc, char **argv) {
         fscanf(infile, "%d %d", &n, &m);
         d = (int *) malloc(sizeof(int *) * n * n);
         for (int i = 0; i < n * n; ++i) d[i] = INFINITY;
+	for (int i=0;i<n;++i) d[i*n+i]=0;
         int a, b, w;
         for (int i = 0; i < m; ++i) {
             fscanf(infile, "%d %d %d", &a, &b, &w);
@@ -79,6 +80,15 @@ int main(int argc, char **argv) {
     /* Print results */
     if (my_rank == 0) {
         Print_dists(global_dist, n);
+	FILE *outfile = fopen(argv[2], "w");
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                fprintf(outfile, "%d%s",
+                    (i == j ? 0 : global_dist[i * n + j]),
+                    (j == n - 1 ? " \n" : " ")
+                );
+            }
+        }
         Print_paths(global_pred, n);
         free(global_dist);
         free(global_pred);
@@ -408,14 +418,14 @@ void Print_dists(int global_dist[], int n) {
     printf("  v    dist 0->v\n");
     printf("----   ---------\n");
 
-    for (v = 2*n; v < 3*n; v++) {
+    for (v = 98*n; v < 99*n; v++) {
         if (global_dist[v] == INFINITY) {
             printf("%3d       %5s\n", v, "inf");
         }
         else
             printf("%3d       %4d\n", v, global_dist[v]);
         }
-    for (v = 3*n; v < 4 * n; v++) {
+    for (v = 99*n; v < 100 * n; v++) {
         if (global_dist[v] == INFINITY) {
             printf("%3d       %5s\n", v, "inf");
         }
