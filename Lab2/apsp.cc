@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
     ////////////////////////////////////////
     //n = Read_n(my_rank, comm);
     loc_n = n / p;
+    int just=loc_n+1;
     int rem=n%p;
     if (my_rank<rem){
         loc_n = loc_n+1;
@@ -62,7 +63,27 @@ int main(int argc, char **argv) {
     }
     ////////////////////////////////////////////////////////
     printf("haha3\n ");
-    MPI_Scatter(d, 1, blk_col_mpi_t, loc_mat, n * loc_n, MPI_INT, 0, comm);
+    int * displs = (int *)malloc(p*sizeof(int));
+    int * scounts = (int *)malloc(p*sizeof(int));
+    int offset = 0;
+    for (int i=0; i<p; ++i) {
+	displs[i] = offset;
+	if(i<rem){
+	    scounts[i] = (n / p)+1;
+	    printf("n/p = %d\n ",scounts[i]);
+	    offset += scounts[i];
+	}else{
+	    scounts[i] = (n / p);
+	    printf("--n/p = %d--\n ",scounts[i]);
+            offset += scounts[i];
+	}
+        //offset += stride[i];
+        //scounts[i] = 100 - i;
+    } 
+    //MPI_Scatter(d, 1, blk_col_mpi_t, loc_mat, n * loc_n, MPI_INT, 0, comm);
+    for(int i=0;i<n;i++){
+        MPI_Scatterv(d+i*n, scounts, displs, MPI_INT, loc_mat+i * loc_n, n * loc_n, MPI_INT, 0, comm);
+    }
     printf("haha4\n ");
 
     if (my_rank == 0) free(d);
