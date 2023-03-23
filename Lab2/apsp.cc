@@ -341,11 +341,18 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
        vertex 0 from global vertex 0 */
     for(int ver=0;ver<n;ver++){
     for (i = 0; i < n - 1; i++) {
+	    int offset;
+        if(my_rank<rem){
+            offset=my_rank * loc_n;
+        }else{
+            offset=(rem * (loc_n+1))+((my_rank-rem)*(loc_n));
+        }
+
         loc_u = Find_min_dist(loc_dist, loc_known, loc_n,ver);
 
         if (loc_u != -1) {
             my_min[ver * 2] = loc_dist[ver * loc_n + loc_u];
-            my_min[ver * 2 + 1] = loc_u + my_rank * loc_n;
+            my_min[ver * 2 + 1] = loc_u+offset;//loc_u + my_rank * loc_n;
         }
         else {
             my_min[ver * 2] = INFINITY;
@@ -365,10 +372,21 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
             break;
 
         /* Check if global u belongs to process, and if so update loc_known */
-        if ((glbl_u / loc_n) == my_rank) {
+        /*if ((glbl_u / loc_n) == my_rank) {
             loc_u = glbl_u % loc_n;
             loc_known[ver * loc_n + loc_u] = 1;
+        }*/
+	//int offset;
+        //if(my_rank<rem){
+        //    offset=my_rank * loc_n;
+        //}else{
+        //    offset=(rem * (loc_n+1))+((my_rank-rem)*(loc_n));
+        //}
+	//if(glbl_u>offset && glbl_u<)
+	if(glbl_u<(offset+loc_n) && glbl_u>=offset){
+            loc_known[ver*loc_n + glbl_u-offset]=1;
         }
+ 
 
         /* For each local vertex (global vertex = loc_v + my_rank * loc_n)
            Update the distances from source vertex (0) to loc_v. If vertex
