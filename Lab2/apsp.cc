@@ -8,10 +8,10 @@ MPI_Datatype Build_blk_col_type(int n, int loc_n);
 void Read_matrix(int loc_mat[], int n, int loc_n, MPI_Datatype blk_col_mpi_t,
                  int my_rank, MPI_Comm comm);
 void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
-                   int my_rank, int loc_n);
+                   int my_rank, int loc_n, int rem);
 void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
-              MPI_Comm comm);
-int Find_min_dist(int loc_dist[], int loc_known[], int loc_n);
+              MPI_Comm comm, int rem);
+int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver);
 void Print_matrix(int global_mat[], int rows, int cols);
 void Print_dists(int global_dist[], int n);
 void Print_paths(int global_pred[], int n);
@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
         }
         fclose(infile);
     }
+    printf("haha2\n ");
     MPI_Bcast(&n, 1, MPI_INT, 0, comm);
     ////////////////////////////////////////
     //n = Read_n(my_rank, comm);
@@ -59,17 +60,21 @@ int main(int argc, char **argv) {
         global_pred = (int *)malloc(n * n * sizeof(int));
     }
     ////////////////////////////////////////////////////////
+    printf("haha3\n ");
     MPI_Scatter(d, 1, blk_col_mpi_t, loc_mat, n * loc_n, MPI_INT, 0, comm);
+    printf("haha4\n ");
 
     if (my_rank == 0) free(d);
     ////////////////////////////////////////////////////////
     Dijkstra(loc_mat, loc_dist, loc_pred, loc_n, n, comm,rem);
+    printf("haha5\n ");
 
     /* Gather the results from Dijkstra */
     for(int i=0;i<n;i++){
-    	MPI_Gather(loc_dist[i * loc_n], loc_n, MPI_INT, global_dist[i * n], loc_n, MPI_INT, 0, comm);
-    	MPI_Gather(loc_pred[i * loc_n], loc_n, MPI_INT, global_pred[i * n], loc_n, MPI_INT, 0, comm);
+    	MPI_Gather((loc_dist+i * loc_n), loc_n, MPI_INT, (global_dist+i * n), loc_n, MPI_INT, 0, comm);
+    	MPI_Gather((loc_pred+i * loc_n), loc_n, MPI_INT, (global_pred+i * n), loc_n, MPI_INT, 0, comm);
     }
+    printf("haha6\n ");
 
     /* Print results */
     if (my_rank == 0) {
@@ -78,6 +83,7 @@ int main(int argc, char **argv) {
         free(global_dist);
         free(global_pred);
     }
+    printf("haha7\n ");
     free(loc_mat);
     free(loc_pred);
     free(loc_dist);
@@ -205,20 +211,21 @@ void Read_matrix(int loc_mat[], int n, int loc_n,
  */
 void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
                    int my_rank, int loc_n, int n, int rem) {
+    printf("haha411\n ");
     int offset;
     if(my_rank<rem){
         offset=my_rank * loc_n;
     }else{
         offset=(rem * (loc_n+1))+((my_rank-rem)*(loc_n));
     }
-
+    printf("haha412\n ");
     for(int i=0;i<n;i++){
     	int loc_v;
 
     	for (loc_v = 0; loc_v < loc_n; loc_v++)
-            loc_known[loc_v] = 0;
+            loc_known[i * loc_n + loc_v] = 0;
 	if(i<(offset+loc_n) && i>=offset){
-            loc_known[i*n + i-offset]=1;
+            loc_known[i*loc_n + i-offset]=1;
         }
 
 
@@ -227,6 +234,7 @@ void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[
             loc_pred[i * loc_n + loc_v] = 0;
         }
     }
+    printf("haha413\n ");
 }
 
 
@@ -251,6 +259,7 @@ void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[
  */
 void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
               MPI_Comm comm,int rem) {
+    printf("haha41\n ");
 
     int i, loc_v, loc_u, glbl_u, new_dist, my_rank, dist_glbl_u;
     int *loc_known;
@@ -261,28 +270,30 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
     loc_known = (int *)malloc(n * loc_n * sizeof(int));
 
     Dijkstra_Init(loc_mat, loc_pred, loc_dist, loc_known, my_rank, loc_n, n, rem);
+    printf("haha42\n ");
 
     /* Run loop n - 1 times since we already know the shortest path to global
        vertex 0 from global vertex 0 */
+    for(int ver=0;ver<n;ver++){
     for (i = 0; i < n - 1; i++) {
-        loc_u = Find_min_dist(loc_dist, loc_known, loc_n);
+        loc_u = Find_min_dist(loc_dist, loc_known, loc_n,ver);
 
         if (loc_u != -1) {
-            my_min[0] = loc_dist[loc_u];
-            my_min[1] = loc_u + my_rank * loc_n;
+            my_min[ver * 2] = loc_dist[ver * loc_n + loc_u];
+            my_min[ver * 2 + 1] = loc_u + my_rank * loc_n;
         }
         else {
-            my_min[0] = INFINITY;
-            my_min[1] = -1;
+            my_min[ver * 2] = INFINITY;
+            my_min[ver * 2 + 1] = -1;
         }
 
         /* Get the minimum distance found by the processes and store that
            distance and the global vertex in glbl_min
         */
-        MPI_Allreduce(my_min, glbl_min, 1, MPI_2INT, MPI_MINLOC, comm);
+        MPI_Allreduce(my_min+ver * 2, glbl_min+ver * 2, 1, MPI_2INT, MPI_MINLOC, comm);
 
-        dist_glbl_u = glbl_min[0];
-        glbl_u = glbl_min[1];
+        dist_glbl_u = glbl_min[ver * 2];
+        glbl_u = glbl_min[ver * 2 + 1];
 
         /* This test is to assure that loc_known is not accessed with -1 */
         if (glbl_u == -1)
@@ -291,7 +302,7 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
         /* Check if global u belongs to process, and if so update loc_known */
         if ((glbl_u / loc_n) == my_rank) {
             loc_u = glbl_u % loc_n;
-            loc_known[loc_u] = 1;
+            loc_known[ver * loc_n + loc_u] = 1;
         }
 
         /* For each local vertex (global vertex = loc_v + my_rank * loc_n)
@@ -301,14 +312,15 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
            from the source to local v
          */
         for (loc_v = 0; loc_v < loc_n; loc_v++) {
-            if (!loc_known[loc_v]) {
+            if (!loc_known[ver * loc_n + loc_v]) {
                 new_dist = dist_glbl_u + loc_mat[glbl_u * loc_n + loc_v];
-                if (new_dist < loc_dist[loc_v]) {
-                    loc_dist[loc_v] = new_dist;
-                    loc_pred[loc_v] = glbl_u;
+                if (new_dist < loc_dist[ver * loc_n + loc_v]) {
+                    loc_dist[ver * loc_n + loc_v] = new_dist;
+                    loc_pred[ver * loc_n + loc_v] = glbl_u;
                 }
             }
         }
+    }
     }
     free(loc_known);
 }
@@ -335,14 +347,14 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
  * Note:       loc_u = -1 is not supposed to be used when this function returns
  *
  */
-int Find_min_dist(int loc_dist[], int loc_known[], int loc_n) {
+int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver) {
     int loc_u = -1, loc_v;
     int shortest_dist = INFINITY;
 
     for (loc_v = 0; loc_v < loc_n; loc_v++) {
-        if (!loc_known[loc_v]) {
-            if (loc_dist[loc_v] < shortest_dist) {
-                shortest_dist = loc_dist[loc_v];
+        if (!loc_known[ver * loc_n + loc_v]) {
+            if (loc_dist[ver * loc_n + loc_v] < shortest_dist) {
+                shortest_dist = loc_dist[ver * loc_n + loc_v];
                 loc_u = loc_v;
             }
         }
@@ -396,13 +408,21 @@ void Print_dists(int global_dist[], int n) {
     printf("  v    dist 0->v\n");
     printf("----   ---------\n");
 
-    for (v = 1; v < n; v++) {
+    for (v = 2*n; v < 3*n; v++) {
         if (global_dist[v] == INFINITY) {
             printf("%3d       %5s\n", v, "inf");
         }
         else
             printf("%3d       %4d\n", v, global_dist[v]);
         }
+    for (v = 3*n; v < 4 * n; v++) {
+        if (global_dist[v] == INFINITY) {
+            printf("%3d       %5s\n", v, "inf");
+        }
+        else
+            printf("%3d       %4d\n", v, global_dist[v]);
+        }
+
     printf("\n");
 }
 
