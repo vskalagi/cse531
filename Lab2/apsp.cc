@@ -79,24 +79,50 @@ int main(int argc, char **argv) {
 	}
         //offset += stride[i];
         //scounts[i] = 100 - i;
-    } 
+    }
+    offset+=(n/p); 
     //MPI_Scatter(d, 1, blk_col_mpi_t, loc_mat, n * loc_n, MPI_INT, 0, comm);
     for(int i=0;i<n;i++){
-        MPI_Scatterv(d+i*n, scounts, displs, MPI_INT, loc_mat+i * loc_n, n * loc_n, MPI_INT, 0, comm);
+        MPI_Scatterv(d+i*n, scounts, displs, MPI_INT, loc_mat+i * loc_n,  loc_n, MPI_INT, 0, comm);
     }
     printf("haha4\n ");
 
-    if (my_rank == 0) free(d);
+    //if (my_rank == 0) free(d);
+    if(my_rank==0){
+	    for (int i = 0; i < loc_n; ++i) {
+            for (int j = 0; j < loc_n; ++j) {
+
+                  printf("-%d ", d[i * n + j]);
+            }
+        }
+	    printf("--now local\n");
+
+	    for (int i = 0; i < loc_n; ++i) {
+            for (int j = 0; j < loc_n; ++j) {
+
+                  printf("-%d ", loc_mat[i * loc_n + j]);
+            }
+        }
+
+
+    }
     ////////////////////////////////////////////////////////
     Dijkstra(loc_mat, loc_dist, loc_pred, loc_n, n, comm,rem);
     printf("haha5\n ");
 
     /* Gather the results from Dijkstra */
+    /*
     for(int i=0;i<n;i++){
     	MPI_Gather((loc_dist+i * loc_n), loc_n, MPI_INT, (global_dist+i * n), loc_n, MPI_INT, 0, comm);
     	MPI_Gather((loc_pred+i * loc_n), loc_n, MPI_INT, (global_pred+i * n), loc_n, MPI_INT, 0, comm);
+    }*/
+    for(int i=0;i<n;i++){
+        MPI_Gatherv((loc_dist+i * loc_n), loc_n, MPI_INT, (global_dist+i * n), scounts, displs ,MPI_INT, 0, comm);
+        //MPI_Gatherv((loc_pred+i * loc_n), loc_n, MPI_INT, (global_pred+i * n), scounts, displs , MPI_INT, 0, comm);
     }
     printf("haha6\n ");
+
+    
 
     /* Print results */
     if (my_rank == 0) {
@@ -110,7 +136,15 @@ int main(int argc, char **argv) {
                 );
             }
         }
-        Print_paths(global_pred, n);
+
+	for (int i = 0; i < loc_n; ++i) {
+            for (int j = 0; j < loc_n; ++j) {
+              
+                  printf("-%d ", loc_dist[i * loc_n + j]);
+            }
+        }
+
+        //Print_paths(global_pred, n);
         free(global_dist);
         free(global_pred);
     }
