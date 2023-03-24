@@ -3,6 +3,23 @@
 #include <mpi.h>
 #define INFINITY 200
 
+
+int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver) {
+    int loc_u = -1, loc_v;
+    int shortest_dist = INFINITY;
+
+    for (loc_v = 0; loc_v < loc_n; loc_v++) {
+        if (!loc_known[ver * loc_n + loc_v]) {
+            if (loc_dist[ver * loc_n + loc_v] < shortest_dist) {
+                shortest_dist = loc_dist[ver * loc_n + loc_v];
+                loc_u = loc_v;
+            }
+        }
+    }
+    return loc_u;
+}
+
+
 void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
                    int my_rank, int loc_n, int n, int rem) {
     int offset;
@@ -89,27 +106,7 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
     free(loc_known);
 }
 
-
-int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver) {
-    int loc_u = -1, loc_v;
-    int shortest_dist = INFINITY;
-
-    for (loc_v = 0; loc_v < loc_n; loc_v++) {
-        if (!loc_known[ver * loc_n + loc_v]) {
-            if (loc_dist[ver * loc_n + loc_v] < shortest_dist) {
-                shortest_dist = loc_dist[ver * loc_n + loc_v];
-                loc_u = loc_v;
-            }
-        }
-    }
-    return loc_u;
-}
-
-
-
-
 int main(int argc, char **argv) {
-    printf("haha\n ");
     int *loc_mat, *loc_dist, *loc_pred, *global_dist = NULL, *global_pred = NULL;
     int my_rank, p, loc_n, n, m;
     MPI_Comm comm;
@@ -158,11 +155,9 @@ int main(int argc, char **argv) {
 	displs[i] = offset;
 	if(i<rem){
 	    scounts[i] = (n / p)+1;
-	    printf("n/p = %d\n ",scounts[i]);
 	    offset += scounts[i];
 	}else{
 	    scounts[i] = (n / p);
-	    printf("--n/p = %d--\n ",scounts[i]);
             offset += scounts[i];
 	}
     }
@@ -178,7 +173,7 @@ int main(int argc, char **argv) {
         MPI_Gatherv((loc_dist+i * loc_n), loc_n, MPI_INT, (global_dist+i * n), scounts, displs ,MPI_INT, 0, comm);
     }
     if (my_rank == 0) {
-        Print_dists(global_dist, n);
+        //Print_dists(global_dist, n);
 	    FILE *outfile = fopen(argv[2], "w");
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
