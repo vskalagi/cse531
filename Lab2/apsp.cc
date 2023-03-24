@@ -1,7 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <mpi.h>
+#include <chrono>
+#include <iostream>
 #define INFINITY 200
+using namespace std;
+using namespace std::chrono;
 
 
 int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver) {
@@ -20,7 +24,7 @@ int Find_min_dist(int loc_dist[], int loc_known[], int loc_n, int ver) {
 }
 
 
-void Dijkstra_Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
+void Init(int loc_mat[], int loc_pred[], int loc_dist[], int loc_known[],
                    int my_rank, int loc_n, int n, int rem) {
     int offset;
     if(my_rank<rem){
@@ -58,7 +62,7 @@ void Dijkstra(int loc_mat[], int loc_dist[], int loc_pred[], int loc_n, int n,
     MPI_Comm_rank(comm, &my_rank);
     loc_known = (int *)malloc(n * loc_n * sizeof(int));
 
-    Dijkstra_Init(loc_mat, loc_pred, loc_dist, loc_known, my_rank, loc_n, n, rem);
+    Init(loc_mat, loc_pred, loc_dist, loc_known, my_rank, loc_n, n, rem);
 
     for(int ver=0;ver<n;ver++){
     for (i = 0; i < n - 1; i++) {
@@ -118,6 +122,7 @@ int main(int argc, char **argv) {
     MPI_Comm_size(comm, &p);
     ///////////////////////////////////////
     int *d = NULL;
+    auto start= high_resolution_clock::now();
     if (my_rank == 0){
         FILE *infile = fopen(argv[1], "r");
         fscanf(infile, "%d %d", &n, &m);
@@ -130,6 +135,7 @@ int main(int argc, char **argv) {
             d[a * n + b] = d[b * n + a] = w;
         }
         fclose(infile);
+	start = high_resolution_clock::now();
     }
     MPI_Bcast(&n, 1, MPI_INT, 0, comm);
     ////////////////////////////////////////
@@ -173,6 +179,9 @@ int main(int argc, char **argv) {
         MPI_Gatherv((loc_dist+i * loc_n), loc_n, MPI_INT, (global_dist+i * n), scounts, displs ,MPI_INT, 0, comm);
     }
     if (my_rank == 0) {
+	    auto stop = high_resolution_clock::now();
+	    auto duration = duration_cast<microseconds>(stop - start);
+	    cout << "Time taken by function: "<< duration.count() << " microseconds" << endl;
         //Print_dists(global_dist, n);
 	    FILE *outfile = fopen(argv[2], "w");
         for (int i = 0; i < n; ++i) {
