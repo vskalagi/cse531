@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 //#include "cuda_apsp.cuh"
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 4
 #define INF 200
 #define MAX_DISTANCE 1 << 30 - 1
 
@@ -51,35 +51,36 @@ void _naive_fw_kernel(const int u, size_t pitch, const int nvertex, int* const g
 
 
 static __global__
-void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph) {
-    __shared__ int cacheGraph[BLOCK_SIZE][BLOCK_SIZE];
+void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
+    extern __shared__ int cacheGraph[];
+    //__shared__ int cacheGraph[BLOCK_SIZE][BLOCK_SIZE];
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
 
-    const int v1 = BLOCK_SIZE * blockId + idy;
-    const int v2 = BLOCK_SIZE * blockId + idx;
+    const int v1 = bs * blockId + idy;
+    const int v2 = bs * blockId + idx;
 
     int newPath;
 
     const int cellId = v1 * pitch + v2;
     if (v1 < nvertex && v2 < nvertex) {
-        cacheGraph[idy][idx] = graph[cellId];
+        cacheGraph[idy*bs+idx] = graph[cellId];
     } else {
-        cacheGraph[idy][idx] = MAX_DISTANCE;
+        cacheGraph[idy*bs+idx] = MAX_DISTANCE;
     }
 
     // Synchronize to make sure the all value are loaded in block
     __syncthreads();
 
     #pragma unroll
-    for (int u = 0; u < BLOCK_SIZE; ++u) {
-        newPath = cacheGraph[idy][u] + cacheGraph[u][idx];
+    for (int u = 0; u < bs; ++u) {
+        newPath = cacheGraph[idy*bs+u] + cacheGraph[u*bs+idx];
 
         // Synchronize before calculate new value
         __syncthreads();
-        if (newPath < cacheGraph[idy][idx]) {
-            cacheGraph[idy][idx] = newPath;
+        if (newPath < cacheGraph[idy*bs+idx]) {
+            cacheGraph[idy*bs+idx] = newPath;
         }
 
         // Synchronize to make sure that all value are current
@@ -87,7 +88,7 @@ void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex
     }
 
     if (v1 < nvertex && v2 < nvertex) {
-        graph[cellId] = cacheGraph[idy][idx];
+        graph[cellId] = cacheGraph[idy*bs+idx];
     }
 }
 
@@ -102,35 +103,38 @@ void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex
  * @param pred: Array of predecessors for a graph on device
  */
 static __global__
-void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph) {
+void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph, int bs) {
     if (blockIdx.x == blockId) return;
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
 
-    int v1 = BLOCK_SIZE * blockId + idy;
-    int v2 = BLOCK_SIZE * blockId + idx;
+    int v1 = bs * blockId + idy;
+    int v2 = bs * blockId + idx;
+    extern __shared__ int cacheGraphBase[];
+    
 
-    __shared__ int cacheGraphBase[BLOCK_SIZE][BLOCK_SIZE];
+    //__shared__ int cacheGraphBase[bs][bs];
 
     // Load base block for graph and predecessors
     int cellId = v1 * pitch + v2;
 
     if (v1 < nvertex && v2 < nvertex) {
-        cacheGraphBase[idy][idx] = graph[cellId];
+        cacheGraphBase[idy*bs+idx] = graph[cellId];
     } else {
-        cacheGraphBase[idy][idx] = MAX_DISTANCE;
+        cacheGraphBase[idy*bs+idx] = MAX_DISTANCE;
     }
 
     // Load i-aligned singly dependent blocks
     if (blockIdx.y == 0) {
-        v2 = BLOCK_SIZE * blockIdx.x + idx;
+        v2 = bs * blockIdx.x + idx;
     } else {
    // Load j-aligned singly dependent blocks
-        v1 = BLOCK_SIZE * blockIdx.x + idy;
+        v1 = bs * blockIdx.x + idy;
     }
 
-    __shared__ int cacheGraph[BLOCK_SIZE][BLOCK_SIZE];
+    //__shared__ int cacheGraph[BLOCK_SIZE][BLOCK_SIZE];
+    int *cacheGraph = bs*bs + cacheGraphBase;
 
     // Load current block for graph and predecessors
     int currentPath;
@@ -141,7 +145,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
     } else {
         currentPath = MAX_DISTANCE;
     }
-    cacheGraph[idy][idx] = currentPath;
+    cacheGraph[idy*bs+idx] = currentPath;
 
     // Synchronize to make sure the all value are saved in cache
     __syncthreads();
@@ -150,8 +154,8 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
     // Compute i-aligned singly dependent blocks
     if (blockIdx.y == 0) {
         #pragma unroll
-        for (int u = 0; u < BLOCK_SIZE; ++u) {
-            newPath = cacheGraphBase[idy][u] + cacheGraph[u][idx];
+        for (int u = 0; u < bs; ++u) {
+            newPath = cacheGraphBase[idy*bs+u] + cacheGraph[u*bs+idx];
 
             if (newPath < currentPath) {
                 currentPath = newPath;
@@ -160,7 +164,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
             __syncthreads();
 
            // Update new values
-            cacheGraph[idy][idx] = currentPath;
+            cacheGraph[idy*bs+idx] = currentPath;
 
            // Synchronize to make sure that all threads update cache
             __syncthreads();
@@ -168,8 +172,8 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
     } else {
     // Compute j-aligned singly dependent blocks
         #pragma unroll
-        for (int u = 0; u < BLOCK_SIZE; ++u) {
-            newPath = cacheGraph[idy][u] + cacheGraphBase[u][idx];
+        for (int u = 0; u < bs; ++u) {
+            newPath = cacheGraph[idy*bs+u] + cacheGraphBase[u*bs+idx];
 
             if (newPath < currentPath) {
                 currentPath = newPath;
@@ -179,7 +183,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
             __syncthreads();
 
            // Update new values
-            cacheGraph[idy][idx] = currentPath;
+            cacheGraph[idy*bs+idx] = currentPath;
 
            // Synchronize to make sure that all threads update cache
             __syncthreads();
@@ -202,7 +206,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
  * @param pred: Array of predecessors for a graph on device
  */
 static __global__
-void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph) {
+void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
     if (blockIdx.x == blockId || blockIdx.y == blockId) return;
 
     const int idx = threadIdx.x;
@@ -211,29 +215,31 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
     const int v1 = blockDim.y * blockIdx.y + idy;
     const int v2 = blockDim.x * blockIdx.x + idx;
 
-    __shared__ int cacheGraphBaseRow[BLOCK_SIZE][BLOCK_SIZE];
-    __shared__ int cacheGraphBaseCol[BLOCK_SIZE][BLOCK_SIZE];
+    extern __shared__ int cacheGraphBaseRow[];
+    int *cacheGraphBaseCol = bs*bs+cacheGraphBaseRow;
+    //__shared__ int cacheGraphBaseRow[BLOCK_SIZE][BLOCK_SIZE];
+    //__shared__ int cacheGraphBaseCol[BLOCK_SIZE][BLOCK_SIZE];
 
-    int v1Row = BLOCK_SIZE * blockId + idy;
-    int v2Col = BLOCK_SIZE * blockId + idx;
+    int v1Row = bs * blockId + idy;
+    int v2Col = bs * blockId + idx;
 
     // Load data for block
     int cellId;
     if (v1Row < nvertex && v2 < nvertex) {
         cellId = v1Row * pitch + v2;
 
-        cacheGraphBaseRow[idy][idx] = graph[cellId];
+        cacheGraphBaseRow[idy*bs+idx] = graph[cellId];
     }
     else {
-        cacheGraphBaseRow[idy][idx] = MAX_DISTANCE;
+        cacheGraphBaseRow[idy*bs+idx] = MAX_DISTANCE;
     }
 
     if (v1  < nvertex && v2Col < nvertex) {
         cellId = v1 * pitch + v2Col;
-        cacheGraphBaseCol[idy][idx] = graph[cellId];
+        cacheGraphBaseCol[idy*bs+idx] = graph[cellId];
     }
     else {
-        cacheGraphBaseCol[idy][idx] = MAX_DISTANCE;
+        cacheGraphBaseCol[idy*bs+idx] = MAX_DISTANCE;
     }
 
     // Synchronize to make sure the all value are loaded in virtual block
@@ -248,8 +254,8 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
        currentPath = graph[cellId];
 
         #pragma unroll
-       for (int u = 0; u < BLOCK_SIZE; ++u) {
-           newPath = cacheGraphBaseCol[idy][u] + cacheGraphBaseRow[u][idx];
+       for (int u = 0; u < bs; ++u) {
+           newPath = cacheGraphBaseCol[idy*bs+u] + cacheGraphBaseRow[u*bs+idx];
            if (currentPath > newPath) {
                currentPath = newPath;
            }
@@ -336,33 +342,36 @@ void cudaNaiveFW(int *dataHost,int nvertex) {
  *
  * @param data: unique ptr to graph data with allocated fields on host
  */
-void cudaBlockedFW(int *dataHost,int nvertex) {
+void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
     HANDLE_ERROR(cudaSetDevice(0));
     //int nvertex = nvertex;
+    printf("%d-bb",bs);
     int *graphDevice, *predDevice;
     size_t pitch = _cudaMoveMemoryToDevice(dataHost, &graphDevice, nvertex);
 
-    int numBlock = (nvertex - 1) / BLOCK_SIZE + 1;
+    int numBlock = (nvertex - 1) / bs + 1;
 
     dim3 gridPhase1(1 ,1, 1);
     dim3 gridPhase2(numBlock, 2 , 1);
     dim3 gridPhase3(numBlock, numBlock , 1);
-    dim3 dimBlockSize(BLOCK_SIZE, BLOCK_SIZE, 1);
+    dim3 dimBlockSize(bs, bs, 1);
+    unsigned shared_mem_size_dependent = (bs*bs*sizeof(int));
+    unsigned shared_mem_size_partial = (2*bs*bs*sizeof(int));	
 
     
 
     for(int blockID = 0; blockID < numBlock; ++blockID) {
         // Start dependent phase
-        _blocked_fw_dependent_ph<<<gridPhase1, dimBlockSize>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice);
+        _blocked_fw_dependent_ph<<<gridPhase1, dimBlockSize,shared_mem_size_dependent>>>
+                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
 
         // Start partially dependent phase
-        _blocked_fw_partial_dependent_ph<<<gridPhase2, dimBlockSize>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice);
+        _blocked_fw_partial_dependent_ph<<<gridPhase2, dimBlockSize, shared_mem_size_partial>>>
+                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
 
         // Start independent phase
-        _blocked_fw_independent_ph<<<gridPhase3, dimBlockSize>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice);
+        _blocked_fw_independent_ph<<<gridPhase3, dimBlockSize,shared_mem_size_partial>>>
+                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
     }
 
     // Check for any errors launching the kernel
@@ -386,7 +395,9 @@ int main(int argc, char** argv) {
     }
     fclose(infile);
     //cudaNaiveFW(d,n);
-    cudaBlockedFW(d,n);
+    printf("%s",argv[3]);
+    int ki=atoi(argv[3]);
+    cudaBlockedFW(d,n,ki);
     // ouput
     FILE *outfile = fopen(argv[2], "w");
     for (int i = 0; i < n; ++i) {
