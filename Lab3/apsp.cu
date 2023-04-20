@@ -6,14 +6,6 @@
 #define INF 200
 #define MAX_DISTANCE 1 << 30 - 1
 
-#define HANDLE_ERROR(error) { \
-    if (error != cudaSuccess) { \
-        fprintf(stderr, "%s in %s at line %d\n", \
-                cudaGetErrorString(error), __FILE__, __LINE__); \
-        exit(EXIT_FAILURE); \
-    } \
-} \
-
 
 static __global__
 void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
@@ -189,10 +181,9 @@ size_t _cudaMoveMemoryToDevice(const int*  dataHost, int **graphDevice, int nver
     size_t width = height * sizeof(int);
     size_t pitch;
 
-    HANDLE_ERROR(cudaMallocPitch(graphDevice, &pitch, width, height));
+    cudaMallocPitch(graphDevice, &pitch, width, height);
 
-    HANDLE_ERROR(cudaMemcpy2D(*graphDevice, pitch,
-            dataHost, width, width, height, cudaMemcpyHostToDevice));
+    cudaMemcpy2D(*graphDevice, pitch,dataHost, width, width, height, cudaMemcpyHostToDevice);
 
     return pitch;
 }
@@ -202,13 +193,13 @@ void _cudaMoveMemoryToHost(int *graphDevice,  int* dataHost, size_t pitch,int nv
     size_t height = nvertex;
     size_t width = height * sizeof(int);
 
-    HANDLE_ERROR(cudaMemcpy2D(dataHost, width, graphDevice, pitch, width, height, cudaMemcpyDeviceToHost));
+    cudaMemcpy2D(dataHost, width, graphDevice, pitch, width, height, cudaMemcpyDeviceToHost);
 
-    HANDLE_ERROR(cudaFree(graphDevice));
+    cudaFree(graphDevice);
 }
 
 void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
-    HANDLE_ERROR(cudaSetDevice(0));
+    cudaSetDevice(0);
     //printf("%d-bb",bs);
     int *graphDevice, *predDevice;
     size_t pitch = _cudaMoveMemoryToDevice(dataHost, &graphDevice, nvertex);
@@ -235,8 +226,8 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
                 (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
     }
 
-    HANDLE_ERROR(cudaGetLastError());
-    HANDLE_ERROR(cudaDeviceSynchronize());
+    cudaGetLastError();
+    cudaDeviceSynchronize();
     _cudaMoveMemoryToHost(graphDevice, dataHost, pitch, nvertex);
 }
 
