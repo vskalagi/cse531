@@ -342,12 +342,14 @@ void cudaBlockedFW(int *dataHost,int nvertex) {
     int *graphDevice, *predDevice;
     size_t pitch = _cudaMoveMemoryToDevice(dataHost, &graphDevice, nvertex);
 
+    int numBlock = (nvertex - 1) / BLOCK_SIZE + 1;
+
     dim3 gridPhase1(1 ,1, 1);
-    dim3 gridPhase2((nvertex - 1) / BLOCK_SIZE + 1, 2 , 1);
-    dim3 gridPhase3((nvertex - 1) / BLOCK_SIZE + 1, (nvertex - 1) / BLOCK_SIZE + 1 , 1);
+    dim3 gridPhase2(numBlock, 2 , 1);
+    dim3 gridPhase3(numBlock, numBlock , 1);
     dim3 dimBlockSize(BLOCK_SIZE, BLOCK_SIZE, 1);
 
-    int numBlock = (nvertex - 1) / BLOCK_SIZE + 1;
+    
 
     for(int blockID = 0; blockID < numBlock; ++blockID) {
         // Start dependent phase
