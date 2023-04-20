@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #define INF 200
-#define MAX_DISTANCE 1 << 30 - 1
+
 
 
 static __global__
