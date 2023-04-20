@@ -24,7 +24,7 @@ void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex
     if (v1 < nvertex && v2 < nvertex) {
         cacheGraph[index] = graph[cellId];
     } else {
-        cacheGraph[index] = MAX_DISTANCE;
+        cacheGraph[index] = INF;
     }
 
     __syncthreads();
@@ -62,7 +62,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
     if (v1 < nvertex && v2 < nvertex) {
         cacheGraphBase[index] = graph[cellId];
     } else {
-        cacheGraphBase[index] = MAX_DISTANCE;
+        cacheGraphBase[index] = INF;
     }
 
     if (blockIdx.y == 0) {
@@ -78,7 +78,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
     if (v1 < nvertex && v2 < nvertex) {
         currentPath = graph[cellId];
     } else {
-        currentPath = MAX_DISTANCE;
+        currentPath = INF;
     }
     cacheGraph[index] = currentPath;
     __syncthreads();
@@ -144,7 +144,7 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
         cacheGraphBaseRow[index] = graph[cellId];
     }
     else {
-        cacheGraphBaseRow[index] = MAX_DISTANCE;
+        cacheGraphBaseRow[index] = INF;
     }
 
     if (v1  < nvertex && v2Col < nvertex) {
@@ -152,7 +152,7 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
         cacheGraphBaseCol[index] = graph[cellId];
     }
     else {
-        cacheGraphBaseCol[index] = MAX_DISTANCE;
+        cacheGraphBaseCol[index] = INF;
     }
 
    __syncthreads();
