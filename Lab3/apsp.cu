@@ -202,7 +202,10 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
     cudaSetDevice(0);
     //printf("%d-bb",bs);
     int *graphDevice, *predDevice;
-    size_t pitch = _cudaMoveMemoryToDevice(dataHost, &graphDevice, nvertex);
+    size_t pitch ;
+    /* host to device */
+    cudaMallocPitch(graphDevice, &pitch, nvertex * sizeof(int), nvertex);
+    cudaMemcpy2D(*graphDevice, pitch,dataHost, nvertex * sizeof(int), nvertex * sizeof(int), nvertex, cudaMemcpyHostToDevice);
 
     int numBlock = (nvertex - 1) / bs + 1;
 
@@ -228,7 +231,10 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
 
     cudaGetLastError();
     cudaDeviceSynchronize();
-    _cudaMoveMemoryToHost(graphDevice, dataHost, pitch, nvertex);
+    //_cudaMoveMemoryToHost(graphDevice, dataHost, pitch, nvertex);
+    /* device to host */
+    cudaMemcpy2D(dataHost, nvertex * sizeof(int), graphDevice, pitch, nvertex * sizeof(int), nvertex, cudaMemcpyDeviceToHost);
+    cudaFree(graphDevice);
 }
 
 
