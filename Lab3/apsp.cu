@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #define INF 200
+using namespace std;
+using namespace std::chrono;
 
 
 
@@ -230,7 +232,11 @@ int main(int argc, char** argv) {
     fclose(infile);
     //printf("%s",argv[3]);
     int bs=atoi(argv[3]);
+    auto start= high_resolution_clock::now();
     cudaBlockedFW(d,n,bs);
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    cout << "Time taken by function: "<< duration.count() << " microseconds" << endl;
     // ouput
     FILE *outfile = fopen(argv[2], "w");
     for (int i = 0; i < n; ++i) {
