@@ -204,8 +204,9 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
     int *graphDevice, *predDevice;
     size_t pitch ;
     /* host to device */
-    cudaMallocPitch(graphDevice, &pitch, nvertex * sizeof(int), nvertex);
-    cudaMemcpy2D(*graphDevice, pitch,dataHost, nvertex * sizeof(int), nvertex * sizeof(int), nvertex, cudaMemcpyHostToDevice);
+    size_t columns=nvertex * sizeof(int);
+    cudaMallocPitch(&graphDevice, &pitch, columns, (size_t)nvertex);
+    cudaMemcpy2D(graphDevice, pitch,dataHost, columns, columns, (size_t)nvertex, cudaMemcpyHostToDevice);
 
     int numBlock = (nvertex - 1) / bs + 1;
 
@@ -233,7 +234,7 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
     cudaDeviceSynchronize();
     //_cudaMoveMemoryToHost(graphDevice, dataHost, pitch, nvertex);
     /* device to host */
-    cudaMemcpy2D(dataHost, nvertex * sizeof(int), graphDevice, pitch, nvertex * sizeof(int), nvertex, cudaMemcpyDeviceToHost);
+    cudaMemcpy2D(dataHost, columns, graphDevice, pitch, columns, (size_t)nvertex, cudaMemcpyDeviceToHost);
     cudaFree(graphDevice);
 }
 
