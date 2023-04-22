@@ -175,29 +175,6 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
    }
 }
 
-static
-size_t _cudaMoveMemoryToDevice(const int*  dataHost, int **graphDevice, int nvertex) {
-    size_t height = nvertex;
-    size_t width = height * sizeof(int);
-    size_t pitch;
-
-    cudaMallocPitch(graphDevice, &pitch, width, height);
-
-    cudaMemcpy2D(*graphDevice, pitch,dataHost, width, width, height, cudaMemcpyHostToDevice);
-
-    return pitch;
-}
-
-static
-void _cudaMoveMemoryToHost(int *graphDevice,  int* dataHost, size_t pitch,int nvertex) {
-    size_t height = nvertex;
-    size_t width = height * sizeof(int);
-
-    cudaMemcpy2D(dataHost, width, graphDevice, pitch, width, height, cudaMemcpyDeviceToHost);
-
-    cudaFree(graphDevice);
-}
-
 void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
     cudaSetDevice(0);
     //printf("%d-bb",bs);
@@ -232,7 +209,6 @@ void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
 
     cudaGetLastError();
     cudaDeviceSynchronize();
-    //_cudaMoveMemoryToHost(graphDevice, dataHost, pitch, nvertex);
     /* device to host */
     cudaMemcpy2D(dataHost, columns, graphDevice, pitch, columns, (size_t)nvertex, cudaMemcpyDeviceToHost);
     cudaFree(graphDevice);
