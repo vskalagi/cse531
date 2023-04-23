@@ -12,7 +12,7 @@ using namespace std::chrono;
 
 
 static __global__
-void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
+void self_dependent(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
     extern __shared__ int cacheGraph[];
 
     const int idx = threadIdx.x;
@@ -50,7 +50,7 @@ void _blocked_fw_dependent_ph(const int blockId, size_t pitch, const int nvertex
 }
 
 static __global__
-void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph, int bs) {
+void pivot_row_column(const int blockId, size_t pitch, const int nvertex, int* const graph, int bs) {
     if (blockIdx.x == blockId) return;
 
     const int idx = threadIdx.x;
@@ -125,7 +125,7 @@ void _blocked_fw_partial_dependent_ph(const int blockId, size_t pitch, const int
 }
 
 static __global__
-void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
+void other_blocks(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
     if (blockIdx.x == blockId || blockIdx.y == blockId) return;
 
     const int idx = threadIdx.x;
@@ -179,43 +179,43 @@ void _blocked_fw_independent_ph(const int blockId, size_t pitch, const int nvert
    }
 }
 
-void cudaBlockedFW(int *dataHost,int nvertex,int bs) {
+void cudaBlockedFW(int *cpu_data,int nvertex,int bs) {
     cudaSetDevice(0);
     //printf("%d-bb",bs);
-    int *graphDevice, *predDevice;
+    int *gpu_data;
     size_t pitch ;
     /* host to device */
     size_t columns=nvertex * sizeof(int);
-    cudaMallocPitch(&graphDevice, &pitch, columns, (size_t)nvertex);
-    cudaMemcpy2D(graphDevice, pitch,dataHost, columns, columns, (size_t)nvertex, cudaMemcpyHostToDevice);
+    cudaMallocPitch(&gpu_data, &pitch, columns, (size_t)nvertex);
+    cudaMemcpy2D(gpu_data, pitch,cpu_data, columns, columns, (size_t)nvertex, cudaMemcpyHostToDevice);
 
-    int numBlock = (nvertex - 1) / bs + 1;
+    int n_block = (nvertex - 1) / bs + 1;
 
-    dim3 gridPhase1(1 ,1, 1);
-    dim3 gridPhase2(numBlock, 2 , 1);
-    dim3 gridPhase3(numBlock, numBlock , 1);
+    dim3 phase1(1 ,1, 1);
+    dim3 phase2(n_block, 2 , 1);
+    dim3 phase3(n_block, n_block , 1);
     dim3 dimBlockSize(bs, bs, 1);
     unsigned shared_mem_size_dependent = (bs*bs*sizeof(int));
     unsigned shared_mem_size_partial = (2*bs*bs*sizeof(int));	
 
     
 
-    for(int blockID = 0; blockID < numBlock; ++blockID) {
-        _blocked_fw_dependent_ph<<<gridPhase1, dimBlockSize,shared_mem_size_dependent>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
+    for(int blockID = 0; blockID < n_block; ++blockID) {
+        self_dependent<<<phase1, dimBlockSize,shared_mem_size_dependent>>>
+                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
 
-        _blocked_fw_partial_dependent_ph<<<gridPhase2, dimBlockSize, shared_mem_size_partial>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
+        pivot_row_column<<<phase2, dimBlockSize, shared_mem_size_partial>>>
+                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
 
-        _blocked_fw_independent_ph<<<gridPhase3, dimBlockSize,shared_mem_size_partial>>>
-                (blockID, pitch / sizeof(int), nvertex, graphDevice,bs);
+        other_blocks<<<phase3, dimBlockSize,shared_mem_size_partial>>>
+                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
     }
 
     cudaGetLastError();
     cudaDeviceSynchronize();
     /* device to host */
-    cudaMemcpy2D(dataHost, columns, graphDevice, pitch, columns, (size_t)nvertex, cudaMemcpyDeviceToHost);
-    cudaFree(graphDevice);
+    cudaMemcpy2D(cpu_data, columns, gpu_data, pitch, columns, (size_t)nvertex, cudaMemcpyDeviceToHost);
+    cudaFree(gpu_data);
 }
 
 
