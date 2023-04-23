@@ -3,6 +3,8 @@
 #include "device_launch_parameters.h"
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
+#include <iostream>
 #define INF 200
 using namespace std;
 using namespace std::chrono;
