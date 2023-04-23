@@ -12,14 +12,14 @@ using namespace std::chrono;
 
 
 static __global__
-void self_dependent(const int block_n, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
+void self_dependent(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
     extern __shared__ int shared_data_[];
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
 
-    const int v1 = bs * block_n + idy;
-    const int v2 = bs * block_n + idx;
+    const int v1 = bs * blockId + idy;
+    const int v2 = bs * blockId + idx;
 
     int newPath;
     int index=idy*bs+idx;
@@ -50,14 +50,14 @@ void self_dependent(const int block_n, size_t pitch, const int n_nodes, int* con
 }
 
 static __global__
-void pivot_row_column(const int block_n, size_t pitch, const int n_nodes, int* const matrix_data, int bs) {
-    if (block_nx.x == block_n) return;
+void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data, int bs) {
+    if (blockIdx.x == blockId) return;
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
 
-    int v1 = bs * block_n + idy;
-    int v2 = bs * block_n + idx;
+    int v1 = bs * blockId + idy;
+    int v2 = bs * blockId + idx;
     extern __shared__ int shared_data_Base[];
     
     int entry = v1 * pitch + v2;
@@ -69,10 +69,10 @@ void pivot_row_column(const int block_n, size_t pitch, const int n_nodes, int* c
         shared_data_Base[index] = INF;
     }
 
-    if (block_nx.y == 0) {
-        v2 = bs * block_nx.x + idx;
+    if (blockIdx.y == 0) {
+        v2 = bs * blockIdx.x + idx;
     } else {
-        v1 = bs * block_nx.x + idy;
+        v1 = bs * blockIdx.x + idy;
     }
 
     int *shared_data_ = bs*bs + shared_data_Base;
@@ -88,7 +88,7 @@ void pivot_row_column(const int block_n, size_t pitch, const int n_nodes, int* c
     __syncthreads();
 
     int newPath;
-    if (block_nx.y == 0) {
+    if (blockIdx.y == 0) {
         
         for (int u = 0; u < bs; ++u) {
             newPath = shared_data_Base[idy*bs+u] + shared_data_[u*bs+idx];
@@ -125,21 +125,21 @@ void pivot_row_column(const int block_n, size_t pitch, const int n_nodes, int* c
 }
 
 static __global__
-void other_blocks(const int block_n, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
-    if (block_nx.x == block_n || block_nx.y == block_n) return;
+void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
+    if (blockIdx.x == blockId || blockIdx.y == blockId) return;
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
 
-    const int v1 = blockDim.y * block_nx.y + idy;
-    const int v2 = blockDim.x * block_nx.x + idx;
+    const int v1 = blockDim.y * blockIdx.y + idy;
+    const int v2 = blockDim.x * blockIdx.x + idx;
     int index=idy*bs+idx;
 
     extern __shared__ int shared_data_BaseRow[];
     int *shared_data_BaseCol = bs*bs+shared_data_BaseRow;
 
-    int same_row = bs * block_n + idy;
-    int same_col = bs * block_n + idx;
+    int same_row = bs * blockId + idy;
+    int same_col = bs * blockId + idx;
 
     int entry;
     if (same_row < n_nodes && v2 < n_nodes) {
@@ -200,15 +200,15 @@ void cudaBlockedFW(int *cpu_data,int n_nodes,int bs) {
 
     
 
-    for(int block_n = 0; block_n < n_block; ++block_n) {
+    for(int blockId = 0; blockId < n_block; ++blockId) {
         self_dependent<<<phase1, dimBlockSize,shared_mem_size_dependent>>>
-                (block_n, pitch / sizeof(int), n_nodes, gpu_data,bs);
+                (blockId, pitch / sizeof(int), n_nodes, gpu_data,bs);
 
         pivot_row_column<<<phase2, dimBlockSize, shared_mem_size_partial>>>
-                (block_n, pitch / sizeof(int), n_nodes, gpu_data,bs);
+                (blockId, pitch / sizeof(int), n_nodes, gpu_data,bs);
 
         other_blocks<<<phase3, dimBlockSize,shared_mem_size_partial>>>
-                (block_n, pitch / sizeof(int), n_nodes, gpu_data,bs);
+                (blockId, pitch / sizeof(int), n_nodes, gpu_data,bs);
     }
 
     cudaGetLastError();
