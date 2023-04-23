@@ -33,7 +33,7 @@ void self_dependent(const int blockId, size_t pitch, const int n_nodes, int* con
 
     __syncthreads();
 
-    //#pragma unroll
+    
     for (int u = 0; u < bs; ++u) {
         newPath = shared_data_[idy*bs+u] + shared_data_[u*bs+idx];
 
@@ -89,7 +89,7 @@ void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* c
 
     int newPath;
     if (blockIdx.y == 0) {
-        //#pragma unroll
+        
         for (int u = 0; u < bs; ++u) {
             newPath = shared_data_Base[idy*bs+u] + shared_data_[u*bs+idx];
 
@@ -103,7 +103,7 @@ void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* c
             __syncthreads();
         }
     } else {
-        //#pragma unroll
+        
         for (int u = 0; u < bs; ++u) {
             newPath = shared_data_[idy*bs+u] + shared_data_Base[u*bs+idx];
 
@@ -168,7 +168,7 @@ void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const
        cellId = v1 * pitch + v2;
        currentPath = matrix_data[cellId];
 
-       // #pragma unroll
+       
        for (int u = 0; u < bs; ++u) {
            newPath = shared_data_BaseCol[idy*bs+u] + shared_data_BaseRow[u*bs+idx];
            if (currentPath > newPath) {
