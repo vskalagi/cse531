@@ -24,9 +24,9 @@ void self_dependent(const int blockId, size_t pitch, const int n_nodes, int* con
     int newPath;
     int index=idy*bs+idx;
 
-    const int cellId = v1 * pitch + v2;
+    const int entry = v1 * pitch + v2;
     if (v1 < n_nodes && v2 < n_nodes) {
-        shared_data_[index] = matrix_data[cellId];
+        shared_data_[index] = matrix_data[entry];
     } else {
         shared_data_[index] = INF;
     }
@@ -45,7 +45,7 @@ void self_dependent(const int blockId, size_t pitch, const int n_nodes, int* con
     }
 
     if (v1 < n_nodes && v2 < n_nodes) {
-        matrix_data[cellId] = shared_data_[index];
+        matrix_data[entry] = shared_data_[index];
     }
 }
 
@@ -60,11 +60,11 @@ void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* c
     int v2 = bs * blockId + idx;
     extern __shared__ int shared_data_Base[];
     
-    int cellId = v1 * pitch + v2;
+    int entry = v1 * pitch + v2;
     int index=idy*bs+idx;
 
     if (v1 < n_nodes && v2 < n_nodes) {
-        shared_data_Base[index] = matrix_data[cellId];
+        shared_data_Base[index] = matrix_data[entry];
     } else {
         shared_data_Base[index] = INF;
     }
@@ -78,9 +78,9 @@ void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* c
     int *shared_data_ = bs*bs + shared_data_Base;
     int currentPath;
 
-    cellId = v1 * pitch + v2;
+    entry = v1 * pitch + v2;
     if (v1 < n_nodes && v2 < n_nodes) {
-        currentPath = matrix_data[cellId];
+        currentPath = matrix_data[entry];
     } else {
         currentPath = INF;
     }
@@ -120,7 +120,7 @@ void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* c
     }
 
     if (v1 < n_nodes && v2 < n_nodes) {
-        matrix_data[cellId] = currentPath;
+        matrix_data[entry] = currentPath;
     }
 }
 
@@ -138,22 +138,22 @@ void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const
     extern __shared__ int shared_data_BaseRow[];
     int *shared_data_BaseCol = bs*bs+shared_data_BaseRow;
 
-    int v1Row = bs * blockId + idy;
-    int v2Col = bs * blockId + idx;
+    int same_row = bs * blockId + idy;
+    int same_col = bs * blockId + idx;
 
-    int cellId;
-    if (v1Row < n_nodes && v2 < n_nodes) {
-        cellId = v1Row * pitch + v2;
+    int entry;
+    if (same_row < n_nodes && v2 < n_nodes) {
+        entry = same_row * pitch + v2;
 
-        shared_data_BaseRow[index] = matrix_data[cellId];
+        shared_data_BaseRow[index] = matrix_data[entry];
     }
     else {
         shared_data_BaseRow[index] = INF;
     }
 
-    if (v1  < n_nodes && v2Col < n_nodes) {
-        cellId = v1 * pitch + v2Col;
-        shared_data_BaseCol[index] = matrix_data[cellId];
+    if (v1  < n_nodes && same_col < n_nodes) {
+        entry = v1 * pitch + same_col;
+        shared_data_BaseCol[index] = matrix_data[entry];
     }
     else {
         shared_data_BaseCol[index] = INF;
@@ -165,8 +165,8 @@ void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const
    int newPath;
 
    if (v1  < n_nodes && v2 < n_nodes) {
-       cellId = v1 * pitch + v2;
-       currentPath = matrix_data[cellId];
+       entry = v1 * pitch + v2;
+       currentPath = matrix_data[entry];
 
        
        for (int u = 0; u < bs; ++u) {
@@ -175,7 +175,7 @@ void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const
                currentPath = newPath;
            }
        }
-       matrix_data[cellId] = currentPath;
+       matrix_data[entry] = currentPath;
    }
 }
 
