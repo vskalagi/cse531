@@ -12,8 +12,8 @@ using namespace std::chrono;
 
 
 static __global__
-void self_dependent(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
-    extern __shared__ int cacheGraph[];
+void self_dependent(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
+    extern __shared__ int shared_data_[];
 
     const int idx = threadIdx.x;
     const int idy = threadIdx.y;
@@ -25,32 +25,32 @@ void self_dependent(const int blockId, size_t pitch, const int nvertex, int* con
     int index=idy*bs+idx;
 
     const int cellId = v1 * pitch + v2;
-    if (v1 < nvertex && v2 < nvertex) {
-        cacheGraph[index] = graph[cellId];
+    if (v1 < n_nodes && v2 < n_nodes) {
+        shared_data_[index] = matrix_data[cellId];
     } else {
-        cacheGraph[index] = INF;
+        shared_data_[index] = INF;
     }
 
     __syncthreads();
 
-    #pragma unroll
+    //#pragma unroll
     for (int u = 0; u < bs; ++u) {
-        newPath = cacheGraph[idy*bs+u] + cacheGraph[u*bs+idx];
+        newPath = shared_data_[idy*bs+u] + shared_data_[u*bs+idx];
 
         __syncthreads();
-        if (newPath < cacheGraph[index]) {
-            cacheGraph[index] = newPath;
+        if (newPath < shared_data_[index]) {
+            shared_data_[index] = newPath;
         }
         __syncthreads();
     }
 
-    if (v1 < nvertex && v2 < nvertex) {
-        graph[cellId] = cacheGraph[index];
+    if (v1 < n_nodes && v2 < n_nodes) {
+        matrix_data[cellId] = shared_data_[index];
     }
 }
 
 static __global__
-void pivot_row_column(const int blockId, size_t pitch, const int nvertex, int* const graph, int bs) {
+void pivot_row_column(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data, int bs) {
     if (blockIdx.x == blockId) return;
 
     const int idx = threadIdx.x;
@@ -58,15 +58,15 @@ void pivot_row_column(const int blockId, size_t pitch, const int nvertex, int* c
 
     int v1 = bs * blockId + idy;
     int v2 = bs * blockId + idx;
-    extern __shared__ int cacheGraphBase[];
+    extern __shared__ int shared_data_Base[];
     
     int cellId = v1 * pitch + v2;
     int index=idy*bs+idx;
 
-    if (v1 < nvertex && v2 < nvertex) {
-        cacheGraphBase[index] = graph[cellId];
+    if (v1 < n_nodes && v2 < n_nodes) {
+        shared_data_Base[index] = matrix_data[cellId];
     } else {
-        cacheGraphBase[index] = INF;
+        shared_data_Base[index] = INF;
     }
 
     if (blockIdx.y == 0) {
@@ -75,37 +75,37 @@ void pivot_row_column(const int blockId, size_t pitch, const int nvertex, int* c
         v1 = bs * blockIdx.x + idy;
     }
 
-    int *cacheGraph = bs*bs + cacheGraphBase;
+    int *shared_data_ = bs*bs + shared_data_Base;
     int currentPath;
 
     cellId = v1 * pitch + v2;
-    if (v1 < nvertex && v2 < nvertex) {
-        currentPath = graph[cellId];
+    if (v1 < n_nodes && v2 < n_nodes) {
+        currentPath = matrix_data[cellId];
     } else {
         currentPath = INF;
     }
-    cacheGraph[index] = currentPath;
+    shared_data_[index] = currentPath;
     __syncthreads();
 
     int newPath;
     if (blockIdx.y == 0) {
-        #pragma unroll
+        //#pragma unroll
         for (int u = 0; u < bs; ++u) {
-            newPath = cacheGraphBase[idy*bs+u] + cacheGraph[u*bs+idx];
+            newPath = shared_data_Base[idy*bs+u] + shared_data_[u*bs+idx];
 
             if (newPath < currentPath) {
                 currentPath = newPath;
             }
             __syncthreads();
 
-            cacheGraph[index] = currentPath;
+            shared_data_[index] = currentPath;
 
             __syncthreads();
         }
     } else {
-        #pragma unroll
+        //#pragma unroll
         for (int u = 0; u < bs; ++u) {
-            newPath = cacheGraph[idy*bs+u] + cacheGraphBase[u*bs+idx];
+            newPath = shared_data_[idy*bs+u] + shared_data_Base[u*bs+idx];
 
             if (newPath < currentPath) {
                 currentPath = newPath;
@@ -113,19 +113,19 @@ void pivot_row_column(const int blockId, size_t pitch, const int nvertex, int* c
 
             __syncthreads();
 
-            cacheGraph[index] = currentPath;
+            shared_data_[index] = currentPath;
 
             __syncthreads();
         }
     }
 
-    if (v1 < nvertex && v2 < nvertex) {
-        graph[cellId] = currentPath;
+    if (v1 < n_nodes && v2 < n_nodes) {
+        matrix_data[cellId] = currentPath;
     }
 }
 
 static __global__
-void other_blocks(const int blockId, size_t pitch, const int nvertex, int* const graph,int bs) {
+void other_blocks(const int blockId, size_t pitch, const int n_nodes, int* const matrix_data,int bs) {
     if (blockIdx.x == blockId || blockIdx.y == blockId) return;
 
     const int idx = threadIdx.x;
@@ -135,28 +135,28 @@ void other_blocks(const int blockId, size_t pitch, const int nvertex, int* const
     const int v2 = blockDim.x * blockIdx.x + idx;
     int index=idy*bs+idx;
 
-    extern __shared__ int cacheGraphBaseRow[];
-    int *cacheGraphBaseCol = bs*bs+cacheGraphBaseRow;
+    extern __shared__ int shared_data_BaseRow[];
+    int *shared_data_BaseCol = bs*bs+shared_data_BaseRow;
 
     int v1Row = bs * blockId + idy;
     int v2Col = bs * blockId + idx;
 
     int cellId;
-    if (v1Row < nvertex && v2 < nvertex) {
+    if (v1Row < n_nodes && v2 < n_nodes) {
         cellId = v1Row * pitch + v2;
 
-        cacheGraphBaseRow[index] = graph[cellId];
+        shared_data_BaseRow[index] = matrix_data[cellId];
     }
     else {
-        cacheGraphBaseRow[index] = INF;
+        shared_data_BaseRow[index] = INF;
     }
 
-    if (v1  < nvertex && v2Col < nvertex) {
+    if (v1  < n_nodes && v2Col < n_nodes) {
         cellId = v1 * pitch + v2Col;
-        cacheGraphBaseCol[index] = graph[cellId];
+        shared_data_BaseCol[index] = matrix_data[cellId];
     }
     else {
-        cacheGraphBaseCol[index] = INF;
+        shared_data_BaseCol[index] = INF;
     }
 
    __syncthreads();
@@ -164,32 +164,32 @@ void other_blocks(const int blockId, size_t pitch, const int nvertex, int* const
    int currentPath;
    int newPath;
 
-   if (v1  < nvertex && v2 < nvertex) {
+   if (v1  < n_nodes && v2 < n_nodes) {
        cellId = v1 * pitch + v2;
-       currentPath = graph[cellId];
+       currentPath = matrix_data[cellId];
 
-        #pragma unroll
+       // #pragma unroll
        for (int u = 0; u < bs; ++u) {
-           newPath = cacheGraphBaseCol[idy*bs+u] + cacheGraphBaseRow[u*bs+idx];
+           newPath = shared_data_BaseCol[idy*bs+u] + shared_data_BaseRow[u*bs+idx];
            if (currentPath > newPath) {
                currentPath = newPath;
            }
        }
-       graph[cellId] = currentPath;
+       matrix_data[cellId] = currentPath;
    }
 }
 
-void cudaBlockedFW(int *cpu_data,int nvertex,int bs) {
+void cudaBlockedFW(int *cpu_data,int n_nodes,int bs) {
     cudaSetDevice(0);
     //printf("%d-bb",bs);
     int *gpu_data;
     size_t pitch ;
     /* host to device */
-    size_t columns=nvertex * sizeof(int);
-    cudaMallocPitch(&gpu_data, &pitch, columns, (size_t)nvertex);
-    cudaMemcpy2D(gpu_data, pitch,cpu_data, columns, columns, (size_t)nvertex, cudaMemcpyHostToDevice);
+    size_t columns=n_nodes * sizeof(int);
+    cudaMallocPitch(&gpu_data, &pitch, columns, (size_t)n_nodes);
+    cudaMemcpy2D(gpu_data, pitch,cpu_data, columns, columns, (size_t)n_nodes, cudaMemcpyHostToDevice);
 
-    int n_block = (nvertex - 1) / bs + 1;
+    int n_block = (n_nodes - 1) / bs + 1;
 
     dim3 phase1(1 ,1, 1);
     dim3 phase2(n_block, 2 , 1);
@@ -202,19 +202,19 @@ void cudaBlockedFW(int *cpu_data,int nvertex,int bs) {
 
     for(int blockID = 0; blockID < n_block; ++blockID) {
         self_dependent<<<phase1, dimBlockSize,shared_mem_size_dependent>>>
-                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
+                (blockID, pitch / sizeof(int), n_nodes, gpu_data,bs);
 
         pivot_row_column<<<phase2, dimBlockSize, shared_mem_size_partial>>>
-                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
+                (blockID, pitch / sizeof(int), n_nodes, gpu_data,bs);
 
         other_blocks<<<phase3, dimBlockSize,shared_mem_size_partial>>>
-                (blockID, pitch / sizeof(int), nvertex, gpu_data,bs);
+                (blockID, pitch / sizeof(int), n_nodes, gpu_data,bs);
     }
 
     cudaGetLastError();
     cudaDeviceSynchronize();
     /* device to host */
-    cudaMemcpy2D(cpu_data, columns, gpu_data, pitch, columns, (size_t)nvertex, cudaMemcpyDeviceToHost);
+    cudaMemcpy2D(cpu_data, columns, gpu_data, pitch, columns, (size_t)n_nodes, cudaMemcpyDeviceToHost);
     cudaFree(gpu_data);
 }
 
